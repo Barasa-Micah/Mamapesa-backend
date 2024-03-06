@@ -2,6 +2,9 @@ from django.db import models
 
 
 class BaseModel(models.Model):
+    """
+   Abstract base model with created_at and updated_at fields.
+   """
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -12,6 +15,9 @@ class BaseModel(models.Model):
 # M-pesa Payment models
 
 class MpesaCalls(BaseModel):
+    """
+   Model representing a M-pesa call.
+   """
     id = models.BigAutoField(primary_key=True)  # Explicitly define primary key
     ip_address = models.TextField()
     caller = models.TextField()
@@ -24,6 +30,9 @@ class MpesaCalls(BaseModel):
 
 
 class MpesaCallBacks(BaseModel):
+    """
+   Model representing a M-pesa call back.
+   """
     id = models.BigAutoField(primary_key=True)  # Explicitly define primary key
     ip_address = models.TextField()
     caller = models.TextField()
@@ -36,6 +45,9 @@ class MpesaCallBacks(BaseModel):
 
 
 class MpesaPayment(BaseModel):
+    """
+   Model representing a Mpesa payment.
+   """
     id = models.BigAutoField(primary_key=True)  # Explicitly define primary key
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField()

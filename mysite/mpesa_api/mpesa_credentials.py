@@ -6,12 +6,18 @@ import base64
 
 
 class MpesaC2bCredential:
+    """
+    This class is used to store the Mpesa C2B credentials required to access the API.
+    """
     consumer_key = 'cHnkwYIgBbrxlgBoneczmIJFXVm0oHky'
     consumer_secret = '2nHEyWSD4VjpNh2g'
     api_URL = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
 
 
 class MpesaAccessToken:
+    """
+   This class is used to retrieve the access token from Mpesa API.
+   """
     r = requests.get(MpesaC2bCredential.api_URL,
                      auth=HTTPBasicAuth(MpesaC2bCredential.consumer_key, MpesaC2bCredential.consumer_secret))
     # print(r.text)
@@ -20,10 +26,13 @@ class MpesaAccessToken:
 
 
 class LipanaMpesaPpassword:
+    """
+   This class is used to generate the Lipa Na Mpesa Online Password.
+   """
     lipa_time = datetime.now().strftime('%Y%m%d%H%M%S')
-    Business_short_code = "174379"
+    Business_short_code = "4084887"
     Test_c2b_shortcode = "600344"
-    passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'
+    passkey = 'a5ce9f8f9b6621de9573b4f3eac5d2f3c245e4fefe96722be3ce2c421277f960'
 
     data_to_encode = Business_short_code + passkey + lipa_time
 
