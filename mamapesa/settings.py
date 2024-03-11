@@ -101,14 +101,14 @@ DATABASES = {
     #     'HOST': 'viaduct.proxy.rlwy.net',
     #     'PORT': '22761',
     # }
-}
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-    #  'defa 
-}
+# }
+# # DATABASES = {
+# #     'default': {
+# #         'ENGINE': 'django.db.backends.sqlite3',
+# #         'NAME': BASE_DIR / 'db.sqlite3',
+# #     }
+# #     #  'defa 
+# }
 
 # DATABASES = {
 #     'default': {
@@ -121,6 +121,7 @@ DATABASES = {
 #         'PORT': '3306',
 #     }
 # }
+}
 
 
 # Password validation
@@ -165,6 +166,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'Mamapesa__media'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 AUTH_USER_MODEL='newmamapesa.CustomUser'
 
@@ -183,27 +185,27 @@ REST_FRAMEWORK={
 # )
 
 #This is the  celery section 
-import os
-from celery import Celery
-from celery.schedules import crontab
+# import os
+# from celery import Celery
+# from celery.schedules import crontab
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0' #Since we want to use the rediis broker
+# CELERY_BROKER_URL = 'redis://localhost:6379/0' #Since we want to use the rediis broker
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mamapesa.settings')
+# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mamapesa.settings')
 
-app = Celery('mamapesa')
-app.config_from_object('django.conf:settings', namespace='CELERY')
-app.autodiscover_tasks()
+# app = Celery('mamapesa')
+# app.config_from_object('django.conf:settings', namespace='CELERY')
+# app.autodiscover_tasks()
 
 
 
-CELERY_BEAT_SCHEDULE = {
-    'apply_late_payment_interest_daily': {
-        'task': 'savingsandloans.tasks.apply_late_payment_interest',
-        'schedule': crontab(hour=0, minute=1),  # This mwnas that the loan 
-    },
-    'recalculate_total_loan_owed_daily': {
-        'task': 'savingsandloans.tasks.recalculate_users_total_loan_owed',
-        'schedule': crontab(hour=0, minute=1), #This means that the loan_owed will be updated every night based on the logic passed
-    },
-}
+# CELERY_BEAT_SCHEDULE = {
+#     'apply_late_payment_interest_daily': {
+#         'task': 'savingsandloans.tasks.apply_late_payment_interest',
+#         'schedule': crontab(hour=0, minute=1),  # This mwnas that the loan 
+#     },
+#     'recalculate_total_loan_owed_daily': {
+#         'task': 'savingsandloans.tasks.recalculate_users_total_loan_owed',
+#         'schedule': crontab(hour=0, minute=1), #This means that the loan_owed will be updated every night based on the logic passed
+#     },
+# }
