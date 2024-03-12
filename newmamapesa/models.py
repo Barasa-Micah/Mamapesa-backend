@@ -111,7 +111,7 @@ class Loan(models.Model):
     @property
     def calculated_remaining_days(self):
         today = date.today()
-        today = today + timedelta(days=95)
+        # today = today + timedelta(days=95)
         if isinstance(self.due_date, datetime):
             self.due_date = self.due_date.date()
         if today > self.due_date:
