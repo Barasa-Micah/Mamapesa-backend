@@ -2,10 +2,11 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.contrib.auth.models import AbstractUser
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
 from decimal import Decimal
 from django.conf import settings
 from django.db.models import Sum, F
+
 
 
 class CustomUser(AbstractUser):
@@ -26,7 +27,7 @@ class Customer(models.Model):
     account_number = models.CharField(max_length=20)
     id_number = models.CharField(max_length=20, unique=True, null=False, blank=False)
     address = models.CharField(max_length=100)
-    trust_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # trust_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     loan_owed = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     total_amount_paid  = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     loan_limit = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('8000'))
@@ -36,179 +37,106 @@ class Customer(models.Model):
 
     @property
     def amount_borrowable(self):
-        return max(self.loan_limit - self.loan_owed, Decimal('0.00'))
+        return max(self.loan_limit - self.loan_owed, Decimal('0.00'))    
     
-    @property
-    def trust_score(self):       
-        # score = (self.payment_history_score * 0.30) + (self.loan_utilization_score * 0.20) +  (self.account_activity_score * 0.20) + ((100 if self.verified_identity else 0) * 0.15) + (self.external_credit_score * 0.15)
-        score = (self.payment_history_score * 0.50) + (self.loan_utilization_score * 0.20) +  (self.account_activity_score * 0.20) + ((100 if self.verified_identity else 0) * 0.10) 
-        return min(score, Decimal('100'))  # Ensure score does not exceed 100
-
-    @property
-    def payment_history_score(self):
-        loans = self.loans.all()
-        total_payments = 0
-        on_time_payments = 0
-
-        for loan in loans:
-            payments = loan.payments.all()  
-            total_payments += payments.count()
-            on_time_payments += payments.filter(payment_date__lte=F('loan__due_date')).count()
-
-        if total_payments == 0:
-            return 0  
-
-        score = (on_time_payments / total_payments) * 100
-        return score
-
-    @property
-    def loan_utilization_score(self):
-        utilization = self.loan_utilization
-        if utilization > 75:
-            return 25  # Higher utilization, lower score
-        elif utilization > 50:
-            return 50
-        elif utilization > 25:
-            return 75
-        else:
-            return 100  # Lower utilization, higher score
-
-    @property
-    def loan_utilization(self):
-        total_loan_amount = self.loans.filter(is_active=True).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-        utilization_percentage = (total_loan_amount / self.loan_limit) * 100 if self.loan_limit else 0
-        return 100 - utilization_percentage  # Inverse of utilization for scoring
-
-    @property
-    def account_activity_score(self):
-        score = 0        
-        login_score = self.calculate_login_frequency_score()
-        transaction_score = self.calculate_transaction_volume_score()
-        communication_interaction_score = self.calculate_communication_interaction_score()        
-        weights = {'login': 0.1, 'transaction': 0.7, 'communication': 0.2}
-        
-        score = (login_score * weights['login'] +
-                transaction_score * weights['transaction'] +
-                communication_interaction_score * weights['communication'])
-        return min(score, 100)  
-
-    def calculate_login_frequency_score(self):
-        # Placeholder for logic to calculate login frequency score
-        # For example, return 100 for daily logins, scale down for less frequent logins
-        return 0
-
-    def calculate_transaction_volume_score(self):
-        ninety_days_ago = timezone.now() - timedelta(days=90)
-        transaction_count= Payment.objects.filter(user=self, payment_date__gte=ninety_days_ago).count()
-
-        if transaction_count > 20:  
-            score = 100
-        elif transaction_count > 10: 
-            score = 75
-        elif transaction_count> 5:  
-            score = 50
-        else:
-            score = 25  # Minimal engagement
-        return score
-
-    def calculate_communication_interaction_score(self):
-        # Placeholder for logic to calculate score based on interaction with communications
-        return 0
-
-    # @property
-    # def external_credit_score(self):
-    #     # Placeholder for incorporating external credit scores
-    #     return 0
-
-    @property
-    def is_eligible(self):
-        return self.loan_owed <= self.loan_limit
-
-    def update_customer_loan_owed(customer):
+    def update_customer_loan_owed(self):
+        total_owed = Loan.objects.filter(user=self.user, is_active=True) \
+                             .aggregate(total_owed=Sum(F('amount') - F('repaid_amount'),
+                                                      output_field=models.DecimalField()))['total_owed'] or Decimal('0.00')
    
-        total_owed = Loan.objects.filter(user=customer.user, is_active=True) \
-                             .aggregate(total_owed=Sum(F('amount') - F('repaid_amount'), output_field=models.DecimalField()))['total_owed'] or Decimal('0.00')
-   
-        customer.loan_owed = total_owed
-        customer.save()
+        self.loan_owed = total_owed
+        self.save()
+
+    
     def __str__(self):
         return f"Details for {self.user.username}'s Customer profile"
+    
     class Meta:
-        db_table="Customer"
+        db_table = "Customer"
 
 
 
 class Loan(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='loans')# This is the field used to link the loan to the users table
-    amount = models.DecimalField(max_digits=10, decimal_places=2)#This is the amount that the user borrows
-    amount_disbursed = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)#This is the amount that the user recieves
-    deduction_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5)#This is the rate used to calculate the amount disbursed
-    amount_deducted = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)#This is the result after the subtracting the amount from the amount disbursed
-    loan_duration = models.IntegerField(default = 90)#This is the days that the user is given to repay the loan
-    remaining_days = models.DateField(default=timezone.now)
-    amount_owed = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))#The total amount owed for a specific loan, including when a loan passes the due date and the user starts getting penalized for the loan 
-    application_date = models.DateField(default=timezone.now)#The date that the user applied for the loan   
-    approval_date = models.DateField(null=True, blank=True)#The date that the users loan was approved
-    due_date = models.DateField(null=True, blank=True)  # Add due_date field
-    repaid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)#This is the amount that the user has repaid so far
-    is_approved = models.BooleanField(default=False)#Used to check whether the loan has been approved
-    is_active = models.BooleanField(default=True)#Used to check if a user has a loan
-    is_disbursed = models.BooleanField(default=False)#Used to check whether the amount was disbursed
-    default_days=models.IntegerField(default=0)#This start counting if a user does not pay for a loan within the given period
-    default_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5)#This is the rate that the user will be charged using when the loan duration days end
-    # payment_status = models.BooleanField(default = False)#This is used to indicate the payment status for a loan 
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='loans')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_disbursed = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    deduction_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    amount_deducted = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    loan_duration = models.IntegerField(default=90)
+    application_date = models.DateField(default=timezone.now)
+    approval_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    repaid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_approved = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    is_disbursed = models.BooleanField(default=False)
+    default_days = models.IntegerField(default=0)
+    default_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True) 
 
     def __str__(self):
-        return f"{self.user.username}'s  loan {self.id} of Kshs.{self.amount}"
+        return f"{self.user.username}'s loan {self.id} of Kshs.{self.amount}"
+
     class Meta:
-            db_table="Loans"
-            ordering=["-due_date"]
-    
+        db_table = "Loans"
+        ordering = ["-due_date"]
+
     def generate_amount_disbursed(self):
         interest_rate = Decimal(str(self.deduction_rate))
-        self.amount_disbursed = self.amount * (1 - interest_rate / 100)    
+        self.amount_disbursed = self.amount * (1 - interest_rate / 100)
 
-    # override save() method
     def save(self, *args, **kwargs):
-       self.amount_owed = self.amount
-       self.due_date=self.application_date + timedelta(days=self.loan_duration)       
-       self.generate_amount_disbursed()    
-       if self.repaid_amount>=self.amount:
-           self.is_active=False      
-       return super().save(*args, **kwargs)         
-    
+        self.due_date = self.application_date + timedelta(days=self.loan_duration)
+        self.generate_amount_disbursed()
+
+        # Check if the loan is active and the due date has passed
+        if self.is_active and date.today() > self.due_date.date():
+            remaining_amount = self.amount - self.repaid_amount
+            increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
+            self.amount = F('amount') + increased_amount_due_to_late_payment
+
+        # Check if the loan is fully repaid
+        if self.repaid_amount >= self.amount:
+            self.is_active = False
+            self.remaining_days = 0
+
+        self.calculated_remaining_days
+        super().save(*args, **kwargs)
+
     @property
     def amount_deducted(self):
         return self.amount - self.amount_disbursed
-            
-    #Calculting remaining days 
-    def calculating_remaining_days(self):
+
+    @property
+    def calculated_remaining_days(self):
         today = date.today()
-        if today > self.due_date:           
+        today = today + timedelta(days=95)
+        if isinstance(self.due_date, datetime):
+            self.due_date = self.due_date.date()
+        if today > self.due_date:
             self.default_days = (today - self.due_date).days
-            self.save(update_fields=['default_days'])  
-            remaining_days = None  
-        else:           
-            remaining_days = (self.due_date - today).days
-            self.default_days = 0             
-            remaining_days_str = 'None' if remaining_days is None else str(remaining_days)
-        return f"Remaining days: {remaining_days_str}, Default days: {self.default_days} for Loan ID: {self.id}"
-        
-    #Calculating the amount that will be increamented on daily basis once the due_date passes
-    def check_and_update_loan_owed_due_to_late_payment(self):
+            return None
+        else:
+            self.default_days = 0
+            return (self.due_date - today).days
+
+    @property
+    def late_payment_update(self):
         today = date.today()
         if today > self.due_date and self.is_active:
-            remaining_amount = self.amount_owed - self.repaid_amount
+            remaining_amount = self.amount - self.repaid_amount
             increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
-            self.amount_owed = increased_amount_due_to_late_payment
-            self.save(update_fields=['amount_owed'])
-            self.user.update_loan_owed()
+            self.amount_disbursed += increased_amount_due_to_late_payment
+            self.save()
+            self.user.customer.update_customer_loan_owed()
+        return self.amount
+
+
     @property
     def remaining_amount(self):
-        return self.amount-self.repaid_amount
-
+        return self.amount - self.repaid_amount
+    
 # class Trust_Score(models.Model):
 #     loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True)
     

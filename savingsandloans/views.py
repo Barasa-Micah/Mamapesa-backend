@@ -13,6 +13,7 @@ from decimal import Decimal
 from .signals import after_deposit, loan_disbursed, update_transaction_status, after_loan_repayment
 from .serializer_helpers import get_all_transactions
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 class SavingsAccountView(APIView):
     """
@@ -323,6 +324,7 @@ class LoanRequestView(APIView):
                 loan.is_approved=True
                 loan.approval_date=timezone.now()
                 loan.save()
+                loan.calculated_remaining_days
 
                 update_transaction_status.send(sender=None,type="Loan Disbursement",loan=loan, status="completed")
             
@@ -350,7 +352,7 @@ class LoanRequestView(APIView):
         
     def check_loan_eligibility(self, user, amount_requested):    
         if user.customer.loan_owed + amount_requested> user.customer.loan_limit:
-            return {'is_eligible': False, 'error': "Loan limit exceeded due to existing debt."}
+            return {'is_eligible': False, 'error': "Loan limit exceeded due to existing debt."}  
    
         # if amount_requested > user.customer.amount_borrowable:
         #     return {'is_eligible': False, 'error': "Requested loan exceeds borrowable limit."}    
@@ -407,73 +409,72 @@ class LoanRepaymentView(APIView):
     permission_classes = [IsAuthenticated]
         
     def post(self, request):
-        user=request.user
-        amount_paid =request.data.get("amount_paid")
+        user = request.user
+        amount_paid = request.data.get("amount_paid")
         
-        if amount_paid>0:
-            all_loans=user.loans.filter(is_active=True)
+        if amount_paid > 0:
+            all_loans = user.loans.filter(is_active=True)
             if all_loans.exists():
-                user.customer.loan_owed-=amount_paid
+                user.customer.loan_owed -= amount_paid
                 user.customer.save()
                 
-                amount_to_redistribute=amount_paid
+                amount_to_redistribute = amount_paid
+                repayment_successful = False
+
                 for loan in all_loans:
-                    if amount_to_redistribute<=0:
+                    if amount_to_redistribute <= 0:
                         break
                     
-                    repayment_amount=min(amount_to_redistribute, loan.remaining_amount)
+                    repayment_amount = min(amount_to_redistribute, loan.remaining_amount)
+                    if repayment_amount > loan.remaining_amount:
+                        remaining_amount = loan.remaining_amount
+                        raise ValidationError(f"Amount paid exceeds the remaining loan amount ({remaining_amount})")
+
                     
-                    loan.repaid_amount+=repayment_amount
+                    loan.repaid_amount += repayment_amount
+                    user.customer.loan_owed -= repayment_amount
                     loan.save()
-                    if repayment_amount !=0:
+
+                    if repayment_amount != 0:
                         after_loan_repayment.send(
-                                    sender=None,
-                                    user=user,
-                                    amount=repayment_amount, 
-                                    transaction_id="",
-                                    payment_ref="",
-                                    loan=loan
-                                    )
+                            sender=None,
+                            user=user,
+                            amount=repayment_amount, 
+                            transaction_id="",
+                            payment_ref="",
+                            loan=loan
+                        )
                     
-                    amount_to_redistribute-=repayment_amount
+                    amount_to_redistribute -= repayment_amount
 
-
-                    repayment_successful=False
+                    user.customer.update_customer_loan_owed()
 
                     # SIMULATING PAYMENT INTEGRATION ______________________
-
-                    repayment_successful=True
-
-                    # ____________________PAYMENT DONE__________________
-                    if repayment_successful:
-                        response_dict=dict(message="repayment of loan successful")
-                        update_transaction_status.send(sender=None,loan=loan, type="Loan Repayment", status="completed")
-
-                        return Response(response_dict, status=status.HTTP_200_OK)
-
-                    else:
-                        response_dict=dict(
-                            success=False,
-                            message="Loan repayment failed",
-                            amount=amount_paid
-                            )
-                        update_transaction_status.send(sender=None,loan=loan, type="Loan Repayment", status="failed")
-                        
-                        return Response(response_dict, status=status.HTTP_201_CREATED)
-
-
-
-
-                    # after_loan_repayment.send(sender=None, amount=amount_paid,)
-                
-                
+                    repayment_successful = True  # Update this based on actual payment integration
+                    
+                # ____________________PAYMENT DONE__________________
+                if repayment_successful:
+                    response_dict = dict(message="Repayment of loan successful")
+                    for loan in all_loans:
+                        update_transaction_status.send(sender=None, loan=loan, type="Loan Repayment", status="completed")
+                    return Response(response_dict, status=status.HTTP_200_OK)
+                else:
+                    response_dict = dict(
+                        success=False,
+                        message="Loan repayment failed",
+                        amount=amount_paid
+                    )
+                    for loan in all_loans:
+                        update_transaction_status.send(sender=None, loan=loan, type="Loan Repayment", status="failed")
+                    return Response(response_dict, status=status.HTTP_201_CREATED)
             else:
-                response_dict=dict(message="No active loans found")
+                response_dict = dict(message="No active loans found")
                 return Response(response_dict, status=status.HTTP_200_OK)
         else:
-            response_dict=dict(message="amount not provided")
-            return Response(response_dict, status=status.HTTP_400_BAD_REQUEST)  
-        
+            response_dict = dict(message="Amount not provided or invalid")
+            return Response(response_dict, status=status.HTTP_400_BAD_REQUEST)
+
+
 class LoanTransactionView(APIView):
     authentication_classes = [SessionAuthentication, TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -484,9 +485,29 @@ class LoanTransactionView(APIView):
         serializer = LoanTransactionSerializer(transactions, many=True)
         return Response(serializer.data)
 
-class UserLoanInfoView(generics.RetrieveAPIView):
+# class UserLoanInfoView(generics.RetrieveAPIView):
+#     serializer_class = CustomUserSerializer
+#     permission_classes = [IsAuthenticated]    
+
+#     def get_object(self):        
+#         latest_loan = self.request.user.loans.last()
+#         if latest_loan:           
+#             latest_loan.remaining_days = latest_loan.calculated_remaining_days
+#         return latest_loan
+    
+
+class UserLoanInfoView(generics.ListAPIView):
     serializer_class = CustomUserSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_object(self):        
-        return self.request.user
+    def get_queryset(self):
+        user = self.request.user
+        loans = user.loans.all().order_by('-created_at')
+
+        for loan in loans:
+            if callable(getattr(loan, 'late_payment_update', None)):
+                loan.late_payment_update()
+
+            loan.remaining_days = loan.calculated_remaining_days
+
+        return loans
