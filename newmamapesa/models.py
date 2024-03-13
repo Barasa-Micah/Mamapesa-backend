@@ -26,12 +26,9 @@ class Customer(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='customer')
     account_number = models.CharField(max_length=20)
     id_number = models.CharField(max_length=20, unique=True, null=False, blank=False)
-    address = models.CharField(max_length=100)
-    # trust_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    loan_owed = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    total_amount_paid  = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    address = models.CharField(max_length=100) 
+    loan_owed = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))  
     loan_limit = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('8000'))
-    verified_identity = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,10 +85,15 @@ class Loan(models.Model):
 
     def save(self, *args, **kwargs):
         self.due_date = self.application_date + timedelta(days=self.loan_duration)
+        
+        # Ensure due_date is a date object (if it's a datetime object)
+        if isinstance(self.due_date, datetime):
+            self.due_date = self.due_date.date()
+
         self.generate_amount_disbursed()
 
         # Check if the loan is active and the due date has passed
-        if self.is_active and date.today() > self.due_date.date():
+        if self.is_active and date.today() > self.due_date:
             remaining_amount = self.amount - self.repaid_amount
             increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
             self.amount = F('amount') + increased_amount_due_to_late_payment
@@ -140,7 +142,7 @@ class Loan(models.Model):
 # class Trust_Score(models.Model):
 #     loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True)
     
-
+    
 
 
 
@@ -448,5 +450,4 @@ class Communication(models.Model):
     #     else:
     #         overdue_fee=0
     #     return overdue_fee
-    
     

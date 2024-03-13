@@ -415,6 +415,11 @@ class LoanRepaymentView(APIView):
         if amount_paid > 0:
             all_loans = user.loans.filter(is_active=True)
             if all_loans.exists():
+                total_remaining_loan_amount = user.customer.loan_owed
+
+                if amount_paid > total_remaining_loan_amount:
+                    raise ValidationError(f"Amount paid ({amount_paid}) exceeds the total remaining loan amount ({total_remaining_loan_amount})")
+                
                 user.customer.loan_owed -= amount_paid
                 user.customer.save()
                 
