@@ -8,6 +8,8 @@ from django.db.models import Sum, F
 from datetime import timedelta, date, datetime
 from decimal import Decimal
 from django.conf import settings
+# from .newSignals import owed
+from django.dispatch import receiver, Signal
 
 # Create your models here.
 
@@ -27,17 +29,28 @@ class Customer(models.Model):
         return max(self.loan_limit - self.loan_owed, Decimal('0.00'))    
     
     def update_customer_loan_owed(self):
-        total_owed = Loan.objects.filter(user=self.user, is_active=True) \
-                             .aggregate(total_owed=Sum(F('amount') - F('repaid_amount'),
-                                                      output_field=models.DecimalField()))['total_owed'] or Decimal('0.00')
-   
-        self.loan_owed = total_owed
-        self.save()
+        all_loans=self.user.loans.all()
+        total=0
+        for loan in all_loans:
+            total+=loan.remaining_amount
+        
+        self.loan_owed=total
+        # loan.user.customer.save()
+        # total_owed = Loan.objects.filter(user=self.user, is_active=True) \
+        #                      .aggregate(total_owed=Sum(F('amount') - F('repaid_amount'),
+        #                                               output_field=models.DecimalField()))['total_owed'] or Decimal('0.00')
+        # default_charges = Loan.objects.filter(user=self.user, is_active=True) \
+        #                               .aggregate(total_default_charges=Sum('default_charges'))['total_default_charges'] or Decimal('0.00')
+        # self.loan_owed = total_owed + default_charges
+        # self.save()
+        
     
     def __str__(self):
         return f"Details for {self.user.first_name}'s Customer profile"
     class Meta:
         db_table="Customer"
+        
+
 
         
 class Loan(models.Model):
@@ -45,13 +58,16 @@ class Loan(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     amount_disbursed = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     deduction_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5)
-    amount_deducted = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    # ************ how are you to update 
+    # amount_deducted = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     loan_duration = models.IntegerField(default = 90)
     application_date = models.DateField(default=timezone.now)
     approval_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)  # Add due_date field
     repaid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    balance = models.FloatField(default=0)
     is_approved = models.BooleanField(default=False)
+    payment_ref = models.CharField(max_length=25, null=True, default=None)
     is_active = models.BooleanField(default=True)
     is_disbursed = models.BooleanField(default=False)
     default_days=models.IntegerField(default=0)
@@ -76,55 +92,80 @@ class Loan(models.Model):
         # Ensure due_date is a date object (if it's a datetime object)
         if isinstance(self.due_date, datetime):
             self.due_date = self.due_date.date()
-
+        # _____________________________________________________________________ FUNCTION CALL
         self.generate_amount_disbursed()
 
         # Check if the loan is active and the due date has passed
-        if self.is_active and date.today() > self.due_date:
-            remaining_amount = self.amount - self.repaid_amount
-            increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
-            self.amount = F('amount') + increased_amount_due_to_late_payment
+        # if self.is_active and date.today() > self.due_date:
+            # remaining_amount = self.amount - self.repaid_amount
+            # **************************** _________________ ****************
+            # ************ not right way to get increased amount
+            # increased_amount_due_to_late_payment = remaining_amount * ((1 + self.default_rate) / 100)
+            # ************______ different logic for calculating increased amount required _____ 
+            # self.amount = F('amount') + increased_amount_due_to_late_payment
 
         # Check if the loan is fully repaid
+        # ************something else needed -- today <= due_date + below
         if self.repaid_amount >= self.amount:
             self.is_active = False
             self.remaining_days = 0
 
+        # ************????
         self.calculated_remaining_days
+        
+        print("Save has been done ")
+        print("Save has been done ")
+        print("Save has been done ")
         super().save(*args, **kwargs)
 
+    # ************ _________________________________ unused 
     @property
-    def amount_deducted(self):
-        return self.amount - self.amount_disbursed
+    def remaining_amount(self):
+        return self.total_loan - self.repaid_amount
+    
+    # @property
+    # def amount_deducted(self):
+    #     return self.total_loan - self.amount_disbursed
+    
+    
 
     @property
     def calculated_remaining_days(self):
         today = date.today()
-        # today = today + timedelta(days=95)
+        today = today + timedelta(days=91)
         if isinstance(self.due_date, datetime):
             self.due_date = self.due_date.date()
         if today > self.due_date:
             self.default_days = (today - self.due_date).days
-            return None
+            # self.save()
+            # self.user.customer.update_customer_loan_owed()
+            # owed.send(sender=None, loan_id=self.id)
+            # print(self.id)
+            return 0
         else:
             self.default_days = 0
+            # self.user.customer.update_customer_loan_owed()
+            # self.save()
+            # owed.send(sender=None)
             return (self.due_date - today).days
 
     @property
-    def late_payment_update(self):
-        today = date.today()
-        if today > self.due_date and self.is_active:
-            remaining_amount = self.amount - self.repaid_amount
-            increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
-            self.amount_disbursed += increased_amount_due_to_late_payment
-            self.save()
-            self.user.customer.update_customer_loan_owed()
-        return self.amount
-
-
+    def is_overdue(self):
+        return self.due_date.date<timezone.now()
+    
     @property
-    def remaining_amount(self):
-        return self.amount - self.repaid_amount
+    def default_charges(self):
+        if self.calculated_remaining_days == 0:
+            default_charges=self.amount_disbursed*(self.default_rate/100)*self.default_days
+            return default_charges
+        else:
+            return 0
+    @property
+    def total_loan(self):
+        return self.amount +self.default_charges
+        
+
+
         
     
 class Item(models.Model):
@@ -141,6 +182,7 @@ class Item(models.Model):
         db_table="Items"  
 class Savings(models.Model):
     user=models.OneToOneField(settings.AUTH_USER_MODEL , on_delete=models.CASCADE, related_name="savings_account")
+    customer_id = models.IntegerField(null=True, default=None)
     amount_saved = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     items=models.ManyToManyField(Item ,through="SavingsItem", related_name="savings")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -160,6 +202,8 @@ class SavingsItem(models.Model):
     item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='savings_items')
     target_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     amount_saved = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    payment_ref = models.CharField(max_length=25, null=True, default=None)
+    customer_id = models.IntegerField(null=True, default=None)
     start_date = models.DateField(default=timezone.now)
     due_date = models.DateField(null=True, blank=True)
     achieved = models.BooleanField(default=False)
@@ -304,3 +348,28 @@ class Payment(models.Model):
         return f"{self.customer.user.first_name}'s {self.type} payment_number {self.id}"
     
 
+    # @property
+    # def default_days_count(self):
+    #     if self.calculated_remaining_days>0:
+    #         return 0
+        
+    #     today=timezone.now()
+    #     today=today+timedelta(days=100)
+    #     default_days=(today-self.due_date).days
+    #     return default_days
+
+    # @property
+    # def late_payment_update(self):
+    #     today = date.today()
+    #     if today > self.due_date and self.is_active:
+    #         remaining_amount = self.amount - self.repaid_amount
+    #         # ************ not right way to get increased amount
+    #         increased_amount_due_to_late_payment = remaining_amount * (1 + self.default_rate / 100)
+    #         # ************ never to be modified - amount_disbursed
+    #         self.amount += increased_amount_due_to_late_payment
+    #         self.save()
+    #         # _____________________________________________________________________ FUNCTION CALL
+    #         self.user.customer.update_customer_loan_owed()
+    #         # ************ why return amount
+    #     return self.amount
+    

@@ -50,8 +50,20 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'accounts',
     'savingsandloans',
+    'tailwind',  
+    'theme',
+    'django_browser_reload'
     # 'mpesa_api',
     
+]
+
+TAILWIND_APP_NAME='theme'
+
+NODEJS_BIN_PATH = '/c/Install/node'
+NPM_BIN_PATH = 'C:/Program Files/nodejs/npm.cmd'
+
+INTERNAL_IPS = [
+    "127.0.0.1",
 ]
 
 MIDDLEWARE = [
@@ -62,6 +74,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_browser_reload.middleware.BrowserReloadMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -149,7 +162,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

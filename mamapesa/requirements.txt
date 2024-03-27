@@ -3,7 +3,9 @@ certifi==2024.2.2
 charset-normalizer==3.3.2
 decouple==0.0.7
 Django==5.0.2
+django-browser-reload==1.12.1
 django-decouple==2.1
+django-tailwind==3.8.0
 djangorestframework==3.14.0
 idna==3.6
 pillow==10.2.0

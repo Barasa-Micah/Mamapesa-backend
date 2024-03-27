@@ -59,8 +59,12 @@ class LoginWithToken(APIView):
 def user_registration(request):
     if request.method == 'POST':
         id_number=request.data.get("id_number")
+        phone_number=request.data.get("phone_number")
         if not id_number:
             response_dict=dict(error="id_number is required")
+            return Response(response_dict, status=status.HTTP_400_BAD_REQUEST)
+        if not phone_number:
+            response_dict=dict(error="phone_number is required")
             return Response(response_dict, status=status.HTTP_400_BAD_REQUEST)
         if len(id_number)!=8:
             response_dict=dict(error="id_number length should be 8")
@@ -113,7 +117,7 @@ class SendResetEmail(APIView):
         phone_number=request.data.get("phone_number")
 
         if not phone_number:
-            response_dict=dict(error="Phone number is  required")
+            response_dict=dict(error="Phone number is required")
             return Response(response_dict, status=status.HTTP_400_BAD_REQUEST)
         
         try:
@@ -150,15 +154,16 @@ def PasswordReset(request, uid,token):
     # def PasswordReset(request, uid, token):
     # token2="00256dc093ae7b5d6efbbcbbdb219630aaf3c0d2"
     try:
-        user_id = str(urlsafe_base64_decode(uid))
+        user_id = force_str(urlsafe_base64_decode(uid))
         user = get_object_or_404(CustomUser, pk=int(user_id))
         # user = get_object_or_404(CustomUser, pk=1)
-        user.first_name="Working"
-        user.save()
+        # user.first_name="Working"
+        
+        # user.save()
     except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist):
         user = None
-    print(user.first_name)
-    print(token)
+    # print(user.first_name)
+    # print(token)
     
     if user and default_token_generator.check_token(user, token):
     # if True:
@@ -173,6 +178,8 @@ def PasswordReset(request, uid,token):
         
         context = {'form': form}
         return render(request, 'accounts/reset-password.html', context)
+        # ________________________  here ________________ 
+        # return render(request, 'accounts/password-expired-token.html', context)
     else:
         return redirect('password-expired-token')
 

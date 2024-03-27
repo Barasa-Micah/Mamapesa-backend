@@ -1,0 +1,32 @@
+{% load static tailwind_tags %} {% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %} newBase {% endblock %}</title>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{% static 'survey/styles.css' %}"
+    />
+    {% tailwind_css %}
+
+    <!-- <script src="{% static 'authentication/js_file.js' %}" defer></script> -->
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body class="relative">
+    <div class="w-full h-full">
+      {% block content %}
+      <h1>This is the newBase template</h1>
+      {% endblock %}
+    </div>
+  </body>
+</html>
