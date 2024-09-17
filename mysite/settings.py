@@ -32,13 +32,13 @@ ALLOWED_HOSTS = ['79372821.ngrok.io', '127.0.0.1', 'localhost']
 
 INSTALLED_APPS = [
     # 'mpesa_api.apps.MpesaApiConfig',
+    'mpesa_api',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'mpesa_api',
+    'django.contrib.staticfiles'
 ]
 
 MIDDLEWARE = [
