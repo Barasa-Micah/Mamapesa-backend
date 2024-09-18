@@ -1,7 +1,13 @@
+import json
+import random
+import string
+from requests import request
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from .api.stk_push import make_stk_push_request
 from .serializers import (
+    GroupMemberSerializer,
+    GroupSerializer,
     SavingsAccountSerializer,
     SavingsItemSerializer,
     LoanRequestSerializer,
@@ -10,6 +16,8 @@ from .serializers import (
     PaymentSerializer,
     LoanSerializer,
 )
+from savingsandloans.models import Group, GroupMember
+from django.contrib.auth.models import AnonymousUser
 from rest_framework import status, generics
 from django.http import JsonResponse
 from rest_framework.response import Response
@@ -696,3 +704,206 @@ class TransactionView(APIView):
         serializer = PaymentSerializer(transactions, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class GroupSavingView(APIView):
+    """
+    API endpoint for managing group savings.
+    """
+    # authentication_classes = [SessionAuthentication, TokenAuthentication]
+    # permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Create a new group or add a member to a group.
+        """
+        generated_unique_code = ''.join(random.choices(string.digits + string.ascii_uppercase, k=6))
+        
+        if 'group' in request.data:
+            # Add a member to a group
+            group = get_object_or_404(Group, unique_code=request.data['group'])
+            data = request.data
+            data['group'] = group.id  # Pass the group ID to the serializer
+
+            serializer = GroupMemberSerializer(data=data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({'message': 'Member added successfully', 'member': serializer.data}, status=status.HTTP_201_CREATED)
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Create a new group
+            try:
+                # Get the phone number and amount from the request data
+                phone_number = request.data['phone_number']
+                amount = 75  # Fixed amount for creating a group
+
+                # Make the STK push request
+                response_code, response_data = make_stk_push_request(amount, phone_number, "Group creation")
+
+                # Check if the STK push request was successful
+                if response_code == 200:
+                    # Create the group
+                    data = request.data
+                    data['unique_code'] = generated_unique_code
+                    serializer = GroupSerializer(data=data)
+                    
+                    if serializer.is_valid():
+                        group = serializer.save()
+                        return Response({
+                            'message': 'Group created successfully',
+                            'group': serializer.data
+                        }, status=status.HTTP_201_CREATED)
+                    
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    # Return an error message if the STK push request was not successful
+                    return Response({'error': response_data["error"]}, status=status.HTTP_400_BAD_REQUEST)
+
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+            except:  # catch all other exceptions
+                return Response({'error': 'An unknown error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    def put(self, request, unique_code):
+        """
+        Update a group by unique code.
+        """
+        try:
+            group = get_object_or_404(Group, unique_code=unique_code)
+            serializer = GroupSerializer(group, data=request.data, partial=True)
+
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'message': 'Group updated successfully',
+                    'group': serializer.data
+                }, status=status.HTTP_200_OK)
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, unique_code):
+        """
+        Delete a group by unique code.
+        """
+        try:
+            group = get_object_or_404(Group, unique_code=unique_code)
+            group.delete()
+
+            return Response({'message': 'Group deleted successfully'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request, unique_code=None):
+        """
+        Get group details with members.
+        """
+        if unique_code:
+            group = get_object_or_404(Group, unique_code=unique_code)
+            group_serializer = GroupSerializer(group)
+            members = GroupMember.objects.filter(group=group)
+            member_serializer = GroupMemberSerializer(members, many=True)
+
+            return Response({
+                'group': group_serializer.data,
+                'members': member_serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        # If no unique_code is provided, return a 404 error
+        return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+
+class GenerateInviteCodeView(APIView):
+    def get(self, request, group_id):
+        """
+        Generate an invite code for a group.
+        """
+
+        try:
+            group = get_object_or_404(Group, id=group_id)
+            if not group:
+                return JsonResponse({'error': 'Group not found'}, status=404)
+
+            unique_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            group.unique_code = unique_code
+            group.save()
+            return JsonResponse({'unique_code': unique_code}, status=200)
+        except ValueError as e:
+            return JsonResponse({'error': 'Invalid group ID'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+class AdminGroupTransactionsView(APIView):
+    def get(self, request, unique_code):
+        """
+        Retrieve transactions for a group.
+        """
+        # if not request.user.is_staff:
+        #     return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+        try:
+            group = get_object_or_404(Group, unique_code=unique_code)
+            # Placeholder for transactions
+            transactions = []  # Replace with actual data retrieval
+            return JsonResponse({'transactions': transactions}, status=200)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+class JoinGroupView(APIView):
+    def post(self, request):
+        """
+        Join a group.
+        """
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            unique_code = data.get('unique_code')
+            name = data.get('name')
+
+            if not unique_code or not name:
+                return JsonResponse({'error': 'Unique code and name are required'}, status=400)
+            
+            group = get_object_or_404(Group, unique_code=unique_code)
+            
+            member, created = GroupMember.objects.get_or_create(group=group, name=name)
+
+            if created:
+                return JsonResponse({'message': 'Successfully joined the group', 'member': name}, status=201)
+            else:
+                return JsonResponse({'message': 'Already a member'}, status=200)
+
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+        
+    def get(self, request, unique_code):
+        try:
+            group = get_object_or_404(Group, unique_code=unique_code)
+            members = GroupMember.objects.filter(group=group)
+            member_list = [{'name': member.name, 'total_contributed': member.total_contributed, 'joined_at': member.joined_at.isoformat()} for member in members]
+            return JsonResponse({'members': member_list}, status=200)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+        
+class GroupListView(APIView):
+    def get(self, request):
+        groups = Group.objects.all()
+        group_list = [{
+            'unique_code': group.unique_code,
+            'group_name': group.group_name,
+            'target_amount': group.target_amount,
+            'total_amount_saved': group.total_amount_saved,
+            'description': group.description,
+            'is_chama': group.is_chama,
+            'validity_months': group.validity_months,
+            'start_date': group.start_date,
+            'due_date': group.due_date,
+            'installments': group.installments
+        } for group in groups]
+        return Response({'groups': group_list}, status=200)
+
+    def post(self, request):
+        return Response({'error': 'Method not allowed'}, status=405)

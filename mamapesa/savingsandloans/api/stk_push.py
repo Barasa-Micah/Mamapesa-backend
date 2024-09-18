@@ -21,11 +21,23 @@ def make_stk_push_request(amount, msisdn, account_reference):
         # Check if the request was successful
         if response_code == 200:
             # Return the response code and data if successful
-            return response_code, response.json()
+            # return response_code, response.json()
+            response_data = response.json()
+            if 'checkout_request_id' in response_data:
+                # Return the response code and data if successful
+                return response_code, response_data
+            else:
+                # Return an error message if the checkout_request_id is not present
+                return response_code, {"error": "Checkout request ID not found"}
         else:
             # Return the response code and error message if the request was unsuccessful
             return response_code, {"error": response.text}
+        
+    except requests.exceptions.RequestException as e:
+        # Return a response code of -1 and the error message if there was an error making the request
+        return -1, {"error": str(e)}
 
     except requests.exceptions.RequestException as e:
         # Return a response code of -1 and the error message if there was an error making the request
         return -1, {"error": str(e)}
+

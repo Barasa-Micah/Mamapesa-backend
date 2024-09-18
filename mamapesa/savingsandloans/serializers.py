@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from savingsandloans.models import Loan, Savings, SavingsItem, Item, Payment, Customer
+from savingsandloans.models import Group, GroupMember, Loan, Savings, SavingsItem, Item, Payment, Customer
 
 
 class SavingsAccountSerializer(serializers.ModelSerializer):
@@ -130,4 +130,86 @@ class LoanSerializer(serializers.ModelSerializer):
             "default_days_count",
             "is_overdue",
             "remaining_amount",
+        ]
+
+class GroupMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GroupMember
+        fields = ['id', 'group', 'name', 'total_contributed', 'is_admin', 'joined_at', 'contribution_percentage']
+    def get_contribution_percentage(self, obj):
+        """
+        Calculate the member's contribution as a percentage of the group's target amount.
+        """
+        if obj.group.target_amount and obj.group.target_amount > 0:
+            return (obj.total_contributed / obj.group.target_amount) * 100
+        return 0.0
+
+    def validate_total_contributed(self, value):
+        """
+        Ensure that the total contributed by a member is a non-negative number.
+        """
+        if value < 0:
+            raise serializers.ValidationError("Total contributed cannot be negative.")
+        return value
+
+    def validate(self, data):
+        """
+        Ensure that a member cannot join the same group twice.
+        """
+        group = data.get('group')
+        name = data.get('name')
+
+        if GroupMember.objects.filter(group=group, name=name).exists():
+            raise serializers.ValidationError(f"Member with name {name} is already part of this group.")
+        
+        return data
+
+    def create(self, validated_data):
+        """
+        Custom create method to automatically assign the first member of the group as an admin.
+        """
+        group = validated_data['group']
+
+        # Automatically assign the first member of the group as an admin
+        if not GroupMember.objects.filter(group=group).exists():
+            validated_data['is_admin'] = True
+
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """
+        Custom update method to adjust total contribution dynamically.
+        """
+        # Update total contributed if provided
+        if 'total_contributed' in validated_data:
+            instance.total_contributed = validated_data['total_contributed']
+
+        # If the user is being promoted/demoted as admin, update accordingly
+        if 'is_admin' in validated_data:
+            instance.is_admin = validated_data['is_admin']
+
+        instance.save()
+        return instance
+
+
+class GroupSerializer(serializers.ModelSerializer):
+    members = GroupMemberSerializer(many=True, read_only=True)  # Nested serializer for group members
+    due_date = serializers.ReadOnlyField()  # Using the calculated `due_date` property
+    remaining_days = serializers.ReadOnlyField()  # Using the calculated `remaining_days` property
+
+    class Meta:
+        model = Group
+        fields = [
+            'unique_code',
+            'group_name',
+            'target_amount',
+            'total_amount_saved',
+            'description',
+            'is_chama',
+            'validity_months',
+            'start_date',
+            'installments',
+            'due_date',
+            'remaining_days',
+            'members',  # Nested group members
         ]

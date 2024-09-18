@@ -30,4 +30,16 @@ urlpatterns = [
     path("user-loan-info/", views.UserLoanInfoView.as_view(), name="user-loan-info"),
     path("specific-loan/<int:id>/", views.SpecificLoan.as_view(), name="specific-loan"),
     path("customer-info/", views.CustomerAccountView.as_view(), name="customer-info"),
+
+    # Group savings management URLs
+    path('group-savings/', views.GroupSavingView.as_view(), name='group-savings-list-create'),  # List all groups and create a new group
+    path('group-savings/<str:unique_code>/', views.GroupSavingView.as_view(), name='group-savings-detail-update-delete'),  # Get, update, or delete a specific group by unique code
+    path('group-savings/<str:unique_code>/members/', views.GroupSavingView.as_view(), name='group-savings-members'),  # Add a member or get members of a specific group
+
+    # New URLs
+    path('generate-invite-code/<int:group_id>/', views.GenerateInviteCodeView.as_view(), name='generate-invite-code'),
+    path('admin-group-transactions/<str:unique_code>/', views.AdminGroupTransactionsView.as_view(), name='admin-group-transactions'),
+    path('join-group/', views.JoinGroupView.as_view(), name='join-group'),
+    path('join-group/<str:unique_code>/', views.JoinGroupView.as_view(), name='get-group-members'),
+    path('all-groups/', views.GroupListView.as_view(), name='all-groups'),
 ]
